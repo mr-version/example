@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>MrVersionExample.App</PackageId>
+    <Authors>discrete-sharp</Authors>
+    <Description>Example console application demonstrating Mr. Version</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ExampleLibrary\ExampleLibrary.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Mister.Version" Version="1.1.0-rc.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

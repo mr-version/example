@@ -1,0 +1,108 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version-type:
+        description: 'Version increment type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prerelease
+      prerelease-id:
+        description: 'Prerelease identifier (e.g., alpha, beta, rc)'
+        required: false
+        default: ''
+      custom-version:
+        description: 'Custom version (overrides increment type)'
+        required: false
+        default: ''
+
+jobs:
+  release:
+    name: Create Manual Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Mr. Version
+        uses: mr-version/setup@v1
+        with:
+          version: '1.1.0-rc.1'
+
+      - name: Calculate Version
+        id: version
+        uses: mr-version/calculate@v1
+        with:
+          config-file: 'mister-version.yaml'
+          increment: ${{ github.event.inputs.version-type }}
+          prerelease: ${{ github.event.inputs.prerelease-id }}
+          custom-version: ${{ github.event.inputs.custom-version }}
+
+      - name: Build Projects
+        run: |
+          dotnet build --configuration Release \
+            -p:Version=${{ steps.version.outputs.version }} \
+            -p:AssemblyVersion=${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}.${{ steps.version.outputs.patch }}.0 \
+            -p:FileVersion=${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}.${{ steps.version.outputs.patch }}.0
+
+      - name: Run Tests
+        run: dotnet test --no-build --configuration Release
+
+      - name: Pack NuGet Packages
+        run: |
+          dotnet pack --configuration Release --no-build \
+            -p:PackageVersion=${{ steps.version.outputs.version }} \
+            -o ./artifacts
+
+      - name: Generate Release Notes
+        uses: mr-version/report@v1
+        with:
+          version: ${{ steps.version.outputs.version }}
+          format: 'markdown'
+          output-file: 'RELEASE_NOTES.md'
+          include-changelog: true
+          include-contributors: true
+
+      - name: Create Version Tag
+        uses: mr-version/tag@v1
+        with:
+          version: ${{ steps.version.outputs.version }}
+          prefix: 'v'
+          message: 'Manual release version ${{ steps.version.outputs.version }}'
+
+      - name: Push Tag
+        run: |
+          git push origin v${{ steps.version.outputs.version }}
+
+      - name: Create GitHub Release
+        uses: mr-version/release@v1
+        with:
+          version: ${{ steps.version.outputs.version }}
+          tag: v${{ steps.version.outputs.version }}
+          name: 'Release ${{ steps.version.outputs.version }}'
+          body-file: 'RELEASE_NOTES.md'
+          draft: false
+          prerelease: ${{ steps.version.outputs.prerelease != '' }}
+          files: |
+            artifacts/*.nupkg
+
+      - name: Publish to NuGet
+        if: ${{ !contains(steps.version.outputs.version, '-') }}
+        run: |
+          dotnet nuget push artifacts/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

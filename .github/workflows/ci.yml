@@ -1,0 +1,178 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'release/*', 'hotfix/*' ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  setup:
+    name: Setup Mr. Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      major: ${{ steps.version.outputs.major }}
+      minor: ${{ steps.version.outputs.minor }}
+      patch: ${{ steps.version.outputs.patch }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Mr. Version
+        uses: mr-version/setup@v1
+        with:
+          version: '1.1.0-rc.1'
+
+      - name: Calculate Version
+        id: version
+        uses: mr-version/calculate@v1
+        with:
+          config-file: 'mister-version.yaml'
+
+      - name: Display Version Information
+        run: |
+          echo "Calculated version: ${{ steps.version.outputs.version }}"
+          echo "Major: ${{ steps.version.outputs.major }}"
+          echo "Minor: ${{ steps.version.outputs.minor }}"
+          echo "Patch: ${{ steps.version.outputs.patch }}"
+          echo "Prerelease: ${{ steps.version.outputs.prerelease }}"
+
+  build:
+    name: Build and Test
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [ExampleApp, ExampleLibrary]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build with version
+        run: |
+          dotnet build --configuration Release --no-restore \
+            -p:Version=${{ needs.setup.outputs.version }} \
+            -p:AssemblyVersion=${{ needs.setup.outputs.major }}.${{ needs.setup.outputs.minor }}.${{ needs.setup.outputs.patch }}.0 \
+            -p:FileVersion=${{ needs.setup.outputs.major }}.${{ needs.setup.outputs.minor }}.${{ needs.setup.outputs.patch }}.0
+
+      - name: Test
+        run: dotnet test --no-build --verbosity normal --configuration Release
+
+      - name: Pack NuGet packages
+        if: matrix.project == 'ExampleLibrary'
+        run: |
+          dotnet pack src/${{ matrix.project }}/${{ matrix.project }}.csproj \
+            --configuration Release \
+            --no-build \
+            -p:PackageVersion=${{ needs.setup.outputs.version }} \
+            -o ./artifacts
+
+      - name: Upload artifacts
+        if: matrix.project == 'ExampleLibrary'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/*.nupkg
+
+  report:
+    name: Generate Version Report
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Mr. Version
+        uses: mr-version/setup@v1
+        with:
+          version: '1.1.0-rc.1'
+
+      - name: Generate Version Report
+        uses: mr-version/report@v1
+        with:
+          version: ${{ needs.setup.outputs.version }}
+          format: 'markdown'
+          output-file: 'version-report.md'
+
+      - name: Upload Version Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-report
+          path: version-report.md
+
+      - name: Comment PR with Version Info
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('version-report.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+
+  tag:
+    name: Create Version Tag
+    needs: [setup, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Mr. Version
+        uses: mr-version/setup@v1
+        with:
+          version: '1.1.0-rc.1'
+
+      - name: Create Git Tag
+        uses: mr-version/tag@v1
+        with:
+          version: ${{ needs.setup.outputs.version }}
+          prefix: 'v'
+          message: 'Release version ${{ needs.setup.outputs.version }}'
+
+      - name: Push Tag
+        run: |
+          git push origin v${{ needs.setup.outputs.version }}
+
+  release:
+    name: Create GitHub Release
+    needs: [setup, build, tag]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: mr-version/release@v1
+        with:
+          version: ${{ needs.setup.outputs.version }}
+          tag: v${{ needs.setup.outputs.version }}
+          name: 'Release ${{ needs.setup.outputs.version }}'
+          draft: false
+          prerelease: ${{ needs.setup.outputs.prerelease != '' }}
+          files: |
+            nuget-packages/*.nupkg
+            version-report/version-report.md

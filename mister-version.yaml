@@ -1,0 +1,79 @@
+# Mr. Version Configuration
+# This configuration demonstrates various features of the versioning system
+
+# Default version increment for commits
+default-increment: patch
+
+# Version format
+version-format: "{Major}.{Minor}.{Patch}"
+
+# Branch-specific configuration
+branches:
+  main:
+    increment: minor
+    tag: true
+  develop:
+    increment: patch
+    tag: false
+    prerelease: alpha
+  feature/*:
+    increment: patch
+    tag: false
+    prerelease: beta
+  release/*:
+    increment: patch
+    tag: true
+    prerelease: rc
+  hotfix/*:
+    increment: patch
+    tag: true
+
+# Commit message patterns for version increments
+commit-patterns:
+  - pattern: "^BREAKING CHANGE:"
+    increment: major
+  - pattern: "^feat:"
+    increment: minor
+  - pattern: "^fix:"
+    increment: patch
+  - pattern: "^docs:"
+    increment: none
+  - pattern: "^style:"
+    increment: none
+  - pattern: "^refactor:"
+    increment: patch
+  - pattern: "^test:"
+    increment: none
+  - pattern: "^chore:"
+    increment: none
+
+# Tag configuration
+tag:
+  prefix: "v"
+  message: "Release version {version}"
+
+# Project-specific configuration
+projects:
+  - path: "src/ExampleApp"
+    name: "ExampleApp"
+    independent-versioning: false
+  - path: "src/ExampleLibrary"
+    name: "ExampleLibrary"
+    independent-versioning: false
+  - path: "tests/ExampleApp.Tests"
+    name: "ExampleApp.Tests"
+    versioning: false
+  - path: "tests/ExampleLibrary.Tests"
+    name: "ExampleLibrary.Tests"
+    versioning: false
+
+# Metadata to include in version tags
+metadata:
+  include-commit-hash: true
+  include-branch-name: true
+  include-timestamp: true
+
+# Output configuration
+output:
+  file: "version.json"
+  format: "json"
