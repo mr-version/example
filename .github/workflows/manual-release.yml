@@ -76,16 +76,25 @@ jobs:
           include-changelog: true
           include-contributors: true
 
+      - name: Configure Git
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+
       - name: Create Version Tag
         uses: mr-version/tag@main
         with:
-          version: ${{ steps.version.outputs.version }}
-          prefix: 'v'
-          message: 'Manual release version ${{ steps.version.outputs.version }}'
+          repository-path: '.'
+          projects: 'src/**/*.csproj'
+          tag-prefix: 'v'
+          create-global-tags: true
+          global-tag-strategy: 'all'
+          tag-message-template: 'Manual release {version} for {project}'
+          only-changed: true
 
-      - name: Push Tag
+      - name: Push Tags
         run: |
-          git push origin v${{ steps.version.outputs.version }}
+          git push origin --tags
 
       - name: Create GitHub Release
         uses: mr-version/release@main

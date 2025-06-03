@@ -101,16 +101,25 @@ jobs:
         with:
           version: 'prerelease'
 
+      - name: Configure Git
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+
       - name: Create Git Tag
         uses: mr-version/tag@main
         with:
-          version: ${{ needs.setup.outputs.version }}
-          prefix: 'v'
-          message: 'Release version ${{ needs.setup.outputs.version }}'
+          repository-path: '.'
+          projects: 'src/**/*.csproj'
+          tag-prefix: 'v'
+          create-global-tags: true
+          global-tag-strategy: 'all'
+          tag-message-template: 'Release {version} for {project}'
+          only-changed: true
 
-      - name: Push Tag
+      - name: Push Tags
         run: |
-          git push origin v${{ needs.setup.outputs.version }}
+          git push origin --tags
 
   release:
     name: Create GitHub Release
