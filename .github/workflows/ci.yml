@@ -33,13 +33,12 @@ jobs:
         with:
           config-file: 'mister-version.yaml'
 
-      - name: Display Version Information
-        run: |
-          echo "Calculated version: ${{ steps.version.outputs.version }}"
-          echo "Major: ${{ steps.version.outputs.major }}"
-          echo "Minor: ${{ steps.version.outputs.minor }}"
-          echo "Patch: ${{ steps.version.outputs.patch }}"
-          echo "Prerelease: ${{ steps.version.outputs.prerelease }}"
+      - name: Generate Version Report Summary
+        uses: mr-version/report@main
+        with:
+          output-format: 'markdown'
+          include-commits: true
+          include-dependencies: true
 
   build:
     name: Build and Test
