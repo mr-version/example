@@ -84,47 +84,6 @@ jobs:
           name: nuget-packages
           path: ./artifacts/*.nupkg
 
-  report:
-    name: Generate Version Report
-    needs: [setup, build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Mr. Version
-        uses: mr-version/setup@main
-        with:
-          version: 'prerelease'
-
-      - name: Generate Version Report
-        uses: mr-version/report@main
-        with:
-          version: ${{ needs.setup.outputs.version }}
-          format: 'markdown'
-          output-file: 'version-report.md'
-
-      - name: Upload Version Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: version-report
-          path: version-report.md
-
-      - name: Comment PR with Version Info
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const report = fs.readFileSync('version-report.md', 'utf8');
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: report
-            });
 
   tag:
     name: Create Version Tag
@@ -174,4 +133,3 @@ jobs:
           prerelease: ${{ needs.setup.outputs.prerelease != '' }}
           files: |
             nuget-packages/*.nupkg
-            version-report/version-report.md
