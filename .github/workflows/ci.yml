@@ -25,7 +25,7 @@ jobs:
       - name: Setup Mr. Version
         uses: mr-version/setup@main
         with:
-          version: 'latest'
+          version: 'prerelease'
 
       - name: Calculate Version
         id: version
@@ -97,7 +97,7 @@ jobs:
       - name: Setup Mr. Version
         uses: mr-version/setup@main
         with:
-          version: 'latest'
+          version: 'prerelease'
 
       - name: Generate Version Report
         uses: mr-version/report@main
@@ -141,7 +141,7 @@ jobs:
       - name: Setup Mr. Version
         uses: mr-version/setup@main
         with:
-          version: 'latest'
+          version: 'prerelease'
 
       - name: Create Git Tag
         uses: mr-version/tag@main

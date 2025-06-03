@@ -21,7 +21,7 @@ jobs:
       - name: Setup Mr. Version
         uses: mr-version/setup@main
         with:
-          version: 'latest'
+          version: 'prerelease'
 
       - name: Calculate Current Version
         id: current
