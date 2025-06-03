@@ -19,26 +19,26 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }}
 
       - name: Setup Mr. Version
-        uses: mr-version/setup@v1
+        uses: mr-version/setup@main
         with:
-          version: '1.1.0-rc.1'
+          version: 'latest'
 
       - name: Calculate Current Version
         id: current
-        uses: mr-version/calculate@v1
+        uses: mr-version/calculate@main
         with:
           config-file: 'mister-version.yaml'
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Calculate Base Version
         id: base
-        uses: mr-version/calculate@v1
+        uses: mr-version/calculate@main
         with:
           config-file: 'mister-version.yaml'
           ref: origin/${{ github.event.pull_request.base.ref }}
 
       - name: Generate Version Comparison Report
-        uses: mr-version/report@v1
+        uses: mr-version/report@main
         with:
           version: ${{ steps.current.outputs.version }}
           previous-version: ${{ steps.base.outputs.version }}

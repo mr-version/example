@@ -23,13 +23,13 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Mr. Version
-        uses: mr-version/setup@v1
+        uses: mr-version/setup@main
         with:
-          version: '1.1.0-rc.1'
+          version: 'latest'
 
       - name: Calculate Version
         id: version
-        uses: mr-version/calculate@v1
+        uses: mr-version/calculate@main
         with:
           config-file: 'mister-version.yaml'
 
@@ -95,12 +95,12 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Mr. Version
-        uses: mr-version/setup@v1
+        uses: mr-version/setup@main
         with:
-          version: '1.1.0-rc.1'
+          version: 'latest'
 
       - name: Generate Version Report
-        uses: mr-version/report@v1
+        uses: mr-version/report@main
         with:
           version: ${{ needs.setup.outputs.version }}
           format: 'markdown'
@@ -139,12 +139,12 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Mr. Version
-        uses: mr-version/setup@v1
+        uses: mr-version/setup@main
         with:
-          version: '1.1.0-rc.1'
+          version: 'latest'
 
       - name: Create Git Tag
-        uses: mr-version/tag@v1
+        uses: mr-version/tag@main
         with:
           version: ${{ needs.setup.outputs.version }}
           prefix: 'v'
@@ -166,7 +166,7 @@ jobs:
         uses: actions/download-artifact@v4
 
       - name: Create Release
-        uses: mr-version/release@v1
+        uses: mr-version/release@main
         with:
           version: ${{ needs.setup.outputs.version }}
           tag: v${{ needs.setup.outputs.version }}
