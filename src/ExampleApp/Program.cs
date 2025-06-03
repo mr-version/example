@@ -3,9 +3,9 @@ using ExampleLibrary;
 
 namespace ExampleApp;
 
-class Program
+public class Program
 {
-    static void Main(string[] args)
+    public static void Main(string[] args)
     {
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "Unknown";
         var appName = Assembly.GetExecutingAssembly().GetName().Name ?? "ExampleApp";
