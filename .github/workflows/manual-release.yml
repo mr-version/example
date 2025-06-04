@@ -81,11 +81,6 @@ jobs:
           include-changelog: true
           include-contributors: true
 
-      - name: Configure Git
-        run: |
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
-
       - name: Create Version Tag
         uses: mr-version/tag@main
         with:
