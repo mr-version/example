@@ -1,6 +1,10 @@
 # Mr. Version Configuration
 # This configuration demonstrates various features of the versioning system
 
+# Base global version - used as fallback when no tags or versions are found
+# Applies to all projects including test projects and artifacts normally ignored
+base-global-version: "1.0.0"
+
 # Default version increment for commits
 default-increment: patch
 
