@@ -24,7 +24,7 @@ This example showcases:
 │   ├── ci.yml              # Main CI/CD pipeline
 │   ├── version-check.yml   # PR version checking
 │   └── manual-release.yml  # Manual release workflow
-└── mister-version.yaml     # Version configuration
+└── mr-version.yml     # Version configuration
 ```
 
 ## Features Demonstrated
@@ -59,7 +59,7 @@ The repository follows semantic versioning with automatic version calculation ba
 
 ### 3. Version Configuration
 
-The `mister-version.yaml` file demonstrates:
+The `mr-version.yml` file demonstrates:
 - Branch-specific versioning rules
 - Commit pattern matching
 - Project configuration

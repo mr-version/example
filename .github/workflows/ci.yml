@@ -34,7 +34,7 @@ jobs:
         id: version
         uses: mr-version/calculate@main
         with:
-          config-file: 'mister-version.yaml'
+          config-file: 'mr-version.yml'
 
       - name: Generate Version Report Summary
         uses: mr-version/report@main

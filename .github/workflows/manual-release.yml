@@ -51,7 +51,7 @@ jobs:
         id: version
         uses: mr-version/calculate@main
         with:
-          config-file: 'mister-version.yaml'
+          config-file: 'mr-version.yml'
           increment: ${{ github.event.inputs.version-type }}
           prerelease: ${{ github.event.inputs.prerelease-id }}
           custom-version: ${{ github.event.inputs.custom-version }}

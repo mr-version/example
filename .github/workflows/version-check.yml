@@ -27,14 +27,14 @@ jobs:
         id: current
         uses: mr-version/calculate@main
         with:
-          config-file: 'mister-version.yaml'
+          config-file: 'mr-version.yml'
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Calculate Base Version
         id: base
         uses: mr-version/calculate@main
         with:
-          config-file: 'mister-version.yaml'
+          config-file: 'mr-version.yml'
           ref: origin/${{ github.event.pull_request.base.ref }}
 
       - name: Generate Version Comparison Report
