@@ -24,26 +24,26 @@ jobs:
           dotnet-version: '8.x'
           
       - name: Setup Mr. Version
-        uses: mr-version/setup@v1
+        uses: mr-version/setup@main
         with:
           version: 'prerelease'
 
       - name: Calculate Current Version
         id: current
-        uses: mr-version/calculate@v1
+        uses: mr-version/calculate@main
         with:
           config-file: 'mr-version.yml'
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Calculate Base Version
         id: base
-        uses: mr-version/calculate@v1
+        uses: mr-version/calculate@main
         with:
           config-file: 'mr-version.yml'
           ref: origin/${{ github.event.pull_request.base.ref }}
 
       - name: Generate Version Comparison Report
-        uses: mr-version/report@v1
+        uses: mr-version/report@main
         with:
           output-format: 'markdown'
           output-file: 'version-comparison.md'
