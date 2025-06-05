@@ -55,7 +55,9 @@ jobs:
           output-format: markdown
           post-to-pr: true
           comment-header: '## 🧪 Version Report (Dry Run)'
-          include-test-projects: false
+          include-test-projects: true
+          include-non-packable: true
+          include-all-projects: true
       
       # Example 4: Complete release workflow with dry-run
       - name: Complete Release (Dry Run)
@@ -66,6 +68,8 @@ jobs:
           generate-report: true
           report-format: markdown
           post-report-to-pr: true
+          include-test-projects: true
+          include-non-packable: true
 
   manual-dry-run:
     name: Manual Dry Run Commands
