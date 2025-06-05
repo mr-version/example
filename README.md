@@ -66,6 +66,41 @@ The `mr-version.yml` file demonstrates:
 - Tag formatting
 - Metadata inclusion
 
+### 4. Dry-Run Support
+
+All mr-version components support dry-run mode to preview changes without making them:
+
+#### CLI Commands
+```bash
+# Preview version calculation and tag creation
+mr-version version --project path/to/project.csproj --create-tag --dry-run
+
+# Preview report generation
+mr-version report --dry-run
+```
+
+#### MSBuild Integration
+```bash
+# Build with dry-run to see what tags would be created
+dotnet build /p:CreateTag=true /p:DryRun=true /p:MonoRepoVersionDebug=true
+```
+
+#### GitHub Actions
+```yaml
+# All actions support dry-run mode
+- uses: mr-version/calculate@main
+  with:
+    dry-run: true
+
+- uses: mr-version/tag@main
+  with:
+    dry-run: true
+
+- uses: mr-version/release@main
+  with:
+    dry-run: true
+```
+
 ## Usage
 
 ### Local Development
@@ -88,7 +123,18 @@ The `mr-version.yml` file demonstrates:
 
 4. Calculate version locally:
    ```bash
-   mister-version calculate
+   mr-version report
+   ```
+
+5. Test dry-run functionality:
+   ```bash
+   # Run the test script
+   ./test-dry-run.sh
+   
+   # Or manually test dry-run commands:
+   mr-version version --project src/ExampleLibrary/ExampleLibrary.csproj --create-tag --dry-run
+   mr-version report --dry-run
+   dotnet build /p:CreateTag=true /p:DryRun=true
    ```
 
 ### Creating a Release

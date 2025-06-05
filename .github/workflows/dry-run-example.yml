@@ -1,0 +1,123 @@
+name: Dry Run Example
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Run in dry-run mode'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  version-dry-run:
+    name: Version Calculation (Dry Run)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version calculation
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+      
+      # Example 1: Calculate versions with dry-run
+      - name: Calculate Versions (Dry Run)
+        uses: mr-version/calculate@main
+        with:
+          projects: '**/*.csproj'
+          dry-run: ${{ github.event.inputs.dry-run || 'true' }}
+          update-project-properties: true
+          write-mrversion-props: true
+      
+      # Example 2: Create tags with dry-run
+      - name: Create Tags (Dry Run)
+        uses: mr-version/tag@main
+        with:
+          projects: '**/*.csproj'
+          dry-run: ${{ github.event.inputs.dry-run || 'true' }}
+          create-global-tags: true
+          tag-message-template: 'Release {type} {version} - Dry Run Test'
+      
+      # Example 3: Generate report
+      - name: Generate Report
+        uses: mr-version/report@main
+        with:
+          output-format: markdown
+          post-to-pr: true
+          comment-header: '## 🧪 Version Report (Dry Run)'
+          include-test-projects: false
+      
+      # Example 4: Complete release workflow with dry-run
+      - name: Complete Release (Dry Run)
+        uses: mr-version/release@main
+        with:
+          dry-run: ${{ github.event.inputs.dry-run || 'true' }}
+          create-tags: true
+          generate-report: true
+          report-format: markdown
+          post-report-to-pr: true
+
+  manual-dry-run:
+    name: Manual Dry Run Commands
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Mister.Version
+        uses: mr-version/setup@main
+        with:
+          version: 'latest'
+      
+      - name: Run CLI Dry Run Commands
+        run: |
+          echo "🧪 Testing CLI Dry Run Commands"
+          echo "==============================="
+          echo
+          
+          echo "1. Version calculation with dry-run:"
+          mr-version version \
+            --project src/ExampleLibrary/ExampleLibrary.csproj \
+            --create-tag \
+            --dry-run \
+            --detailed
+          echo
+          
+          echo "2. Report generation with dry-run:"
+          mr-version report \
+            --output json \
+            --dry-run
+          echo
+          
+          echo "3. Check all projects:"
+          for project in $(find . -name "*.csproj" -type f); do
+            echo "Project: $project"
+            mr-version version --project "$project" --dry-run || true
+            echo "---"
+          done
+      
+      - name: Run MSBuild Dry Run
+        run: |
+          echo "🏗️ Testing MSBuild Dry Run"
+          echo "========================="
+          echo
+          
+          dotnet build src/ExampleLibrary/ExampleLibrary.csproj \
+            /p:MonoRepoVersionEnabled=true \
+            /p:CreateTag=true \
+            /p:DryRun=true \
+            /p:MonoRepoVersionDebug=true \
+            -v:n
