@@ -43,13 +43,13 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Setup Mr. Version
-        uses: mr-version/setup@main
+        uses: mr-version/setup@v1
         with:
           version: 'prerelease'
 
       - name: Calculate Version
         id: version
-        uses: mr-version/calculate@main
+        uses: mr-version/calculate@v1
         with:
           config-file: 'mr-version.yml'
           increment: ${{ github.event.inputs.version-type }}
@@ -73,16 +73,14 @@ jobs:
             -o ./artifacts
 
       - name: Generate Release Notes
-        uses: mr-version/report@main
+        uses: mr-version/report@v1
         with:
-          version: ${{ steps.version.outputs.version }}
-          format: 'markdown'
+          output-format: 'markdown'
           output-file: 'RELEASE_NOTES.md'
-          include-changelog: true
-          include-contributors: true
+          changed-only: false
 
       - name: Create Version Tag
-        uses: mr-version/tag@main
+        uses: mr-version/tag@v1
         with:
           repository-path: '.'
           projects: 'src/**/*.csproj'
@@ -97,7 +95,7 @@ jobs:
           git push origin --tags
 
       - name: Create GitHub Release
-        uses: mr-version/release@main
+        uses: mr-version/release@v1
         with:
           version: ${{ steps.version.outputs.version }}
           tag: v${{ steps.version.outputs.version }}

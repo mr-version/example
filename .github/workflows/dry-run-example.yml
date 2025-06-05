@@ -31,13 +31,13 @@ jobs:
           dotnet-version: '8.x'
       
       - name: Setup Mr. Version
-        uses: mr-version/setup@main
+        uses: mr-version/setup@v1
         with:
           version: 'prerelease'
           
       # Example 1: Calculate versions with dry-run
       - name: Calculate Versions (Dry Run)
-        uses: mr-version/calculate@main
+        uses: mr-version/calculate@v1
         with:
           projects: '**/*.csproj'
           dry-run: ${{ github.event.inputs.dry-run || 'true' }}
@@ -46,7 +46,7 @@ jobs:
       
       # Example 2: Create tags with dry-run
       - name: Create Tags (Dry Run)
-        uses: mr-version/tag@main
+        uses: mr-version/tag@v1
         with:
           projects: '**/*.csproj'
           dry-run: ${{ github.event.inputs.dry-run || 'true' }}
@@ -55,26 +55,23 @@ jobs:
       
       # Example 3: Generate report
       - name: Generate Report
-        uses: mr-version/report@main
+        uses: mr-version/report@v1
         with:
           output-format: markdown
           post-to-pr: true
           comment-header: '## 🧪 Version Report (Dry Run)'
-          include-test-projects: true
-          include-non-packable: true
-          include-all-projects: true
+          changed-only: false
       
       # Example 4: Complete release workflow with dry-run
       - name: Complete Release (Dry Run)
-        uses: mr-version/release@main
+        uses: mr-version/release@v1
         with:
           dry-run: ${{ github.event.inputs.dry-run || 'true' }}
           create-tags: true
           generate-report: true
           report-format: markdown
           post-report-to-pr: true
-          include-test-projects: true
-          include-non-packable: true
+          include-all-projects: false
 
   manual-dry-run:
     name: Manual Dry Run Commands
@@ -87,7 +84,7 @@ jobs:
           fetch-depth: 0
       
       - name: Setup Mister.Version
-        uses: mr-version/setup@main
+        uses: mr-version/setup@v1
         with:
           version: 'latest'
       

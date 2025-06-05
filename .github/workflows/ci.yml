@@ -48,6 +48,7 @@ jobs:
           output-format: 'markdown'
           include-commits: true
           include-dependencies: true
+          changed-only: false
 
   build:
     name: Build and Test
