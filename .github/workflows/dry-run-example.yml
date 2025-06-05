@@ -30,6 +30,11 @@ jobs:
         with:
           dotnet-version: '8.x'
       
+      - name: Setup Mr. Version
+        uses: mr-version/setup@main
+        with:
+          version: 'prerelease'
+          
       # Example 1: Calculate versions with dry-run
       - name: Calculate Versions (Dry Run)
         uses: mr-version/calculate@main
