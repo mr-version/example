@@ -49,6 +49,7 @@ jobs:
           include-commits: true
           include-dependencies: true
           changed-only: false
+          repository-path: ${{ github.workspace }}
 
   build:
     name: Build and Test
