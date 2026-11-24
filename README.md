@@ -23,82 +23,121 @@ This example showcases:
 ├── .github/workflows/       # GitHub Actions workflows
 │   ├── ci.yml              # Main CI/CD pipeline
 │   ├── version-check.yml   # PR version checking
-│   └── manual-release.yml  # Manual release workflow
-└── mr-version.yml     # Version configuration
+│   ├── manual-release.yml  # Manual release workflow
+│   └── dry-run-example.yml # Dry-run / read-only examples
+├── Directory.Build.targets  # Adds the Mister.Version MSBuild package to every project
+├── mr-version.yml           # Version configuration
+└── test-dry-run.sh          # Local script: shows versions and would-be tags without changing anything
 ```
+
+## Prerequisites
+
+- .NET 8 SDK
+- The `mr-version` CLI for the local commands below, the same version as the `Mister.Version` package in
+  `Directory.Build.targets` (currently 3.0.0):
+  ```bash
+  dotnet tool install --global Mister.Version.CLI --version 3.0.0
+  ```
+- A clone with full history and tags (CI checkouts use `fetch-depth: 0`); versions are calculated from git.
 
 ## Features Demonstrated
 
 ### 1. Semantic Versioning
 
 The repository follows semantic versioning with automatic version calculation based on:
-- Commit message patterns (feat:, fix:, BREAKING CHANGE:)
-- Branch naming conventions
-- Manual version overrides
+- Conventional Commits (feat:, fix:, BREAKING CHANGE:, ...)
+- The branch type (main, develop, release/*, feature/*, hotfix/*)
+- Manual overrides (prerelease type or forced version, see the manual release)
+
+The `Mister.Version` package versions every project during `dotnet build`; the `mr-version` CLI and the
+GitHub Actions use the same calculation.
 
 ### 2. GitHub Actions Integration
 
+The workflows use `mr-version/setup`, `calculate`, `tag`, `report`, `changelog` and `release` at `@main`:
+the `v1` tags of setup, calculate, tag, report and release still point at their initial check-ins, and
+`changelog` has no tags yet.
+
 #### CI/CD Pipeline (`ci.yml`)
-- **Setup**: Installs Mr. Version CLI
-- **Calculate**: Determines next version
-- **Build**: Builds projects with calculated version
-- **Test**: Runs all unit tests
-- **Report**: Generates version report
-- **Tag**: Creates git tags on main branch
-- **Release**: Creates GitHub releases with artifacts
+- **Setup**: Installs the Mr. Version CLI (`mr-version/setup`)
+- **Calculate**: Calculates the version of every project (`mr-version/calculate`)
+- **Report**: Adds a version report to the job summary (`mr-version/report`)
+- **Build**: Builds and tests the solution; the Mister.Version package sets each project's version
+- **Pack**: Packs `ExampleLibrary` and checks that the package version matches the calculated one
+- **Tag**: On pushes to main, tags exactly the calculated versions and pushes the new tags (`mr-version/tag`)
+- **Release**: Creates a GitHub release with changelog notes (`mr-version/changelog`) and the package
+  (`softprops/action-gh-release`)
 
 #### Version Check (`version-check.yml`)
 - Runs on pull requests
-- Compares version changes between branches
-- Comments on PR with version comparison report
+- Calculates versions for the pull request and for the base branch (checked out as a worktree)
+- Comments on the PR with a comparison table and the report of changed projects
 
 #### Manual Release (`manual-release.yml`)
-- Allows manual version releases
-- Supports custom version numbers
-- Publishes to NuGet (when configured)
+- Releases from any branch on demand
+- Optional prerelease type (`alpha`, `beta`, `rc`) or forced version for the run
+- Tags, creates the GitHub release with `gh release create`, and publishes to NuGet when
+  `NUGET_API_KEY` is configured (final versions only)
 
 ### 3. Version Configuration
 
-The `mr-version.yml` file demonstrates:
-- Branch-specific versioning rules
-- Commit pattern matching
-- Project configuration
-- Tag formatting
-- Metadata inclusion
+The `mr-version.yml` file (camelCase keys, see the
+[Mister.Version README](https://github.com/mr-version/mister.version#yaml-configuration)) demonstrates:
+- A base version for repositories without tags (`baseVersion`)
+- Conventional Commits patterns (`commitConventions`)
+- The tag prefix (`tagPrefix`)
+- Skipping test projects (`skipTestProjects`)
+- Branch names in build metadata (`gitIntegration.includeBranchInMetadata`)
 
-### 4. Dry-Run Support
+Check that the file is understood (no configuration warnings in the output):
 
-All mr-version components support dry-run mode to preview changes without making them:
+```bash
+mr-version version --project src/ExampleLibrary/ExampleLibrary.csproj --debug
+```
+
+### 4. Previewing Without Changes
 
 #### CLI Commands
-```bash
-# Preview version calculation and tag creation
-mr-version version --project path/to/project.csproj --create-tag --dry-run
+The CLI never changes the repository: `version`, `report` and `changelog` only read the history and print
+results, so there is no `--dry-run` flag (and the CLI does not create tags).
 
-# Preview report generation
-mr-version report --dry-run
+```bash
+# Detailed version calculation for one project
+mr-version version --project src/ExampleLibrary/ExampleLibrary.csproj --detailed
+
+# Versions of all projects
+mr-version report --output text --include-test-projects --include-non-packable
+
+# Changelog since the last version tag
+mr-version changelog
 ```
 
 #### MSBuild Integration
+Builds never create tags. `MonoRepoDebug` shows how each version was calculated, and
+`MonoRepoVersioningEnabled=false` turns versioning off:
+
 ```bash
-# Build with dry-run to see what tags would be created
-dotnet build /p:CreateTag=true /p:DryRun=true /p:MonoRepoVersionDebug=true
+dotnet build -p:MonoRepoDebug=true -v:n
 ```
 
 #### GitHub Actions
+`calculate`, `tag` and `release` accept `dry-run` (calculate then leaves project files alone, tag and release
+only report the tags they would create):
+
 ```yaml
-# All actions support dry-run mode
 - uses: mr-version/calculate@main
+  id: calc
   with:
-    dry-run: true
+    dry-run: 'true'
 
 - uses: mr-version/tag@main
   with:
-    dry-run: true
+    projects-json: ${{ steps.calc.outputs.projects }}
+    dry-run: 'true'
 
 - uses: mr-version/release@main
   with:
-    dry-run: true
+    dry-run: 'true'
 ```
 
 ## Usage
@@ -121,20 +160,14 @@ dotnet build /p:CreateTag=true /p:DryRun=true /p:MonoRepoVersionDebug=true
    dotnet test
    ```
 
-4. Calculate version locally:
+4. Calculate versions locally:
    ```bash
    mr-version report
    ```
 
-5. Test dry-run functionality:
+5. Preview versions and the tags a release would create, without changing anything:
    ```bash
-   # Run the test script
    ./test-dry-run.sh
-   
-   # Or manually test dry-run commands:
-   mr-version version --project src/ExampleLibrary/ExampleLibrary.csproj --create-tag --dry-run
-   mr-version report --dry-run
-   dotnet build /p:CreateTag=true /p:DryRun=true
    ```
 
 ### Creating a Release
@@ -147,27 +180,30 @@ dotnet build /p:CreateTag=true /p:DryRun=true /p:MonoRepoVersionDebug=true
 2. **Manual Release**:
    - Go to Actions tab
    - Select "Manual Release" workflow
-   - Choose version increment type
+   - Optionally choose a prerelease type or a version to force (the increment itself comes from the commits)
    - Run workflow
 
 ### Version Patterns
 
 | Commit Pattern | Version Change | Example |
 |----------------|----------------|---------|
-| `BREAKING CHANGE:` | Major | 1.0.0 → 2.0.0 |
+| `BREAKING CHANGE:` footer or `feat!:` | Major | 1.0.0 → 2.0.0 |
 | `feat:` | Minor | 1.0.0 → 1.1.0 |
-| `fix:` | Patch | 1.0.0 → 1.0.1 |
+| `fix:`, `refactor:` | Patch | 1.0.0 → 1.0.1 |
 | `docs:`, `style:`, `test:`, `chore:` | None | 1.0.0 → 1.0.0 |
 
 ### Branch Strategies
 
-| Branch | Versioning | Tag | Prerelease |
-|--------|------------|-----|------------|
-| main | Minor | ✓ | - |
-| develop | Patch | ✗ | alpha |
-| feature/* | Patch | ✗ | beta |
-| release/* | Patch | ✓ | rc |
-| hotfix/* | Patch | ✓ | - |
+Branch behaviour is built into Mister.Version (it is not configured in `mr-version.yml`). Example versions
+after `v1.0.0`:
+
+| Branch | Version | Tagged by CI |
+|--------|---------|--------------|
+| main | Final version from the commits, e.g. `1.1.0` | ✓ (`ci.yml` on push) |
+| develop | Prerelease with the commit height, e.g. `1.1.0-dev.2` | ✗ |
+| feature/new-ops | Prerelease named after the branch, e.g. `1.0.1-new-ops.1` | ✗ |
+| release/1.1 | Final versions within 1.1, e.g. `1.1.0` | ✗ (use the manual release) |
+| hotfix/x | Prerelease named after the branch, e.g. `1.0.1-x.1` | ✗ |
 
 ## Running the Example App
 
@@ -176,13 +212,13 @@ cd src/ExampleApp
 dotnet run -- 10 + 5
 ```
 
-Output:
+Output (the assembly version, which follows the calculated version):
 ```
-ExampleApp v1.0.0
+ExampleApp v1.0.0.0
 ----------------------------------------
 10 + 5 = 15
 
-Library Version: ExampleLibrary v1.0.0
+Library Version: ExampleLibrary v1.0.0.0
 ```
 
 ## Contributing

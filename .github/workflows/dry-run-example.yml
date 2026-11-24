@@ -14,46 +14,59 @@ on:
           - 'true'
           - 'false'
 
+permissions:
+  contents: read
+  pull-requests: write   # the report and release steps comment on the pull request
+
+env:
+  # Keep in sync with the Mister.Version package version in Directory.Build.targets
+  MR_VERSION: '3.0.0'
+  DRY_RUN: ${{ github.event.inputs.dry-run || 'true' }}
+
 jobs:
   version-dry-run:
     name: Version Calculation (Dry Run)
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for version calculation
-      
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
-      
+          dotnet-version: '8.0.x'
+
       - name: Setup Mr. Version
         uses: mr-version/setup@main
         with:
-          version: 'prerelease'
-          
-      # Example 1: Calculate versions with dry-run
+          version: ${{ env.MR_VERSION }}
+
+      # Example 1: calculate versions; with dry-run the project files are not modified
+      # (update-project-properties and write-mrversion-props are skipped)
       - name: Calculate Versions (Dry Run)
+        id: calc
         uses: mr-version/calculate@main
         with:
-          projects: '**/*.csproj'
-          dry-run: ${{ github.event.inputs.dry-run || 'true' }}
-          update-project-properties: true
-          write-mrversion-props: true
-      
-      # Example 2: Create tags with dry-run
+          projects: 'src/**/*.csproj'
+          dry-run: ${{ env.DRY_RUN }}
+          update-project-properties: 'true'
+          write-mrversion-props: 'true'
+          output-version-information: 'true'
+
+      # Example 2: show the tags that would be created for exactly the versions calculated above
       - name: Create Tags (Dry Run)
         uses: mr-version/tag@main
         with:
-          projects: '**/*.csproj'
-          dry-run: ${{ github.event.inputs.dry-run || 'true' }}
-          create-global-tags: true
+          projects-json: ${{ steps.calc.outputs.projects }}
+          dry-run: ${{ env.DRY_RUN }}
+          create-global-tags: 'true'
           tag-message-template: 'Release {type} {version} - Dry Run Test'
-      
-      # Example 3: Generate report
+          push-tags: 'false'   # even with dry-run: 'false' the tags stay in this runner
+
+      # Example 3: generate a report
       - name: Generate Report
         uses: mr-version/report@main
         with:
@@ -61,69 +74,82 @@ jobs:
           post-to-pr: true
           comment-header: '## 🧪 Version Report (Dry Run)'
           changed-only: false
-      
-      # Example 4: Complete release workflow with dry-run
+          include-test-projects: true
+          include-non-packable: true
+
+      # Example 4: complete release workflow with dry-run
       - name: Complete Release (Dry Run)
         uses: mr-version/release@main
         with:
-          dry-run: ${{ github.event.inputs.dry-run || 'true' }}
-          create-tags: true
-          generate-report: true
+          dry-run: ${{ env.DRY_RUN }}
+          create-tags: 'true'
+          push-tags: 'false'
+          generate-report: 'true'
           report-format: markdown
-          post-report-to-pr: true
-          include-all-projects: false
+          post-report-to-pr: 'true'
+          include-test-projects: 'false'
+          include-non-packable: 'true'
 
   manual-dry-run:
-    name: Manual Dry Run Commands
+    name: Read-only CLI and MSBuild Commands
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Setup Mister.Version
         uses: mr-version/setup@main
         with:
-          version: 'latest'
-      
-      - name: Run CLI Dry Run Commands
+          version: ${{ env.MR_VERSION }}
+
+      # The mr-version CLI never changes the repository: version, report and changelog only read the
+      # history and print results, so they need no dry-run flag. Tags are created by mr-version/tag.
+      - name: Run read-only CLI commands
         run: |
-          echo "🧪 Testing CLI Dry Run Commands"
-          echo "==============================="
-          echo
-          
-          echo "1. Version calculation with dry-run:"
-          mr-version version \
-            --project src/ExampleLibrary/ExampleLibrary.csproj \
-            --create-tag \
-            --dry-run \
-            --detailed
-          echo
-          
-          echo "2. Report generation with dry-run:"
-          mr-version report \
-            --output json \
-            --dry-run
-          echo
-          
-          echo "3. Check all projects:"
-          for project in $(find . -name "*.csproj" -type f); do
-            echo "Project: $project"
-            mr-version version --project "$project" --dry-run || true
-            echo "---"
-          done
-      
-      - name: Run MSBuild Dry Run
-        run: |
-          echo "🏗️ Testing MSBuild Dry Run"
+          echo "🧪 Read-only CLI commands"
           echo "========================="
           echo
-          
+
+          echo "1. Version calculation with details:"
+          mr-version version \
+            --project src/ExampleLibrary/ExampleLibrary.csproj \
+            --detailed
+          echo
+
+          echo "2. Report for all projects (JSON):"
+          mr-version report \
+            --output json \
+            --include-test-projects \
+            --include-non-packable
+          echo
+
+          echo "3. Version of every project:"
+          for project in $(find . -name "*.csproj" -type f); do
+            echo "Project: $project"
+            mr-version version --project "$project" || true
+            echo "---"
+          done
+          echo
+
+          echo "4. Changelog since the last version tag:"
+          mr-version changelog --output markdown
+
+      # Building never creates tags; MonoRepoDebug shows how the version was calculated
+      - name: Run MSBuild with versioning diagnostics
+        run: |
+          echo "🏗️ MSBuild versioning diagnostics"
+          echo "================================="
+          echo
+
           dotnet build src/ExampleLibrary/ExampleLibrary.csproj \
-            /p:MonoRepoVersionEnabled=true \
-            /p:CreateTag=true \
-            /p:DryRun=true \
-            /p:MonoRepoVersionDebug=true \
+            -p:MonoRepoVersioningEnabled=true \
+            -p:MonoRepoDebug=true \
             -v:n

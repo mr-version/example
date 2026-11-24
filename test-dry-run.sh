@@ -1,7 +1,12 @@
 #!/bin/bash
-set -e
+# Shows the versions and tags Mister.Version would produce, without changing anything.
+#
+# The mr-version CLI is read-only: `version`, `report` and `changelog` only read the git history and print
+# results, so they have no --dry-run flag. Building never creates tags either. Tags are created by the
+# mr-version/tag GitHub Action, which has a `dry-run` input (see .github/workflows/dry-run-example.yml).
+set -euo pipefail
 
-echo "🧪 Testing Mister.Version Dry-Run Functionality"
+echo "🧪 Testing Mister.Version without side effects"
 echo "=============================================="
 echo
 
@@ -11,39 +16,47 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Test 1: CLI dry-run for version calculation with tag creation
-echo -e "${BLUE}Test 1: CLI version command with dry-run and tag creation${NC}"
-echo "Command: mr-version version --project src/ExampleLibrary/ExampleLibrary.csproj --create-tag --dry-run"
-mr-version version --project src/ExampleLibrary/ExampleLibrary.csproj --create-tag --dry-run
+# Test 1: detailed version calculation for one project
+echo -e "${BLUE}Test 1: CLI version command with details${NC}"
+echo "Command: mr-version version --project src/ExampleLibrary/ExampleLibrary.csproj --detailed"
+mr-version version --project src/ExampleLibrary/ExampleLibrary.csproj --detailed
 echo
 
-# Test 2: CLI dry-run for report generation
-echo -e "${BLUE}Test 2: CLI report command with dry-run${NC}"
-echo "Command: mr-version report --dry-run"
-mr-version report --dry-run
+# Test 2: report for all projects
+echo -e "${BLUE}Test 2: CLI report command${NC}"
+echo "Command: mr-version report --output text --include-test-projects --include-non-packable"
+mr-version report --output text --include-test-projects --include-non-packable
 echo
 
-# Test 3: MSBuild with dry-run
-echo -e "${BLUE}Test 3: MSBuild with DryRun property${NC}"
-echo "Command: dotnet build src/ExampleLibrary/ExampleLibrary.csproj /p:CreateTag=true /p:DryRun=true"
-dotnet build src/ExampleLibrary/ExampleLibrary.csproj /p:CreateTag=true /p:DryRun=true -v:n | grep -E "(DRY RUN|Version:|Tag)"
+# Test 3: MSBuild with versioning diagnostics
+echo -e "${BLUE}Test 3: MSBuild with MonoRepoDebug${NC}"
+echo "Command: dotnet build src/ExampleLibrary/ExampleLibrary.csproj -p:MonoRepoDebug=true"
+dotnet build src/ExampleLibrary/ExampleLibrary.csproj -p:MonoRepoDebug=true -v:n | grep -E "MonoRepo Versioning: Set version|^ *Version changed" | sort -u || true
 echo
 
-# Test 4: Show what tags would be created for multiple projects
-echo -e "${BLUE}Test 4: Check what tags would be created for all projects${NC}"
-echo "Running dry-run version calculation for all projects..."
-for project in src/**/*.csproj tests/**/*.csproj; do
-    if [[ -f "$project" ]]; then
-        echo -e "${YELLOW}Project: $project${NC}"
-        mr-version version --project "$project" --create-tag --dry-run --detailed | grep -E "(Version:|DRY RUN|Would create)"
-        echo
+# Test 4: the tags a release would create (project tags are <name>/<prefix><version>, lower-case name)
+echo -e "${BLUE}Test 4: Tags a release would create for changed projects${NC}"
+shopt -s nullglob
+for project in src/*/*.csproj tests/*/*.csproj; do
+    echo -e "${YELLOW}Project: $project${NC}"
+    output=$(mr-version version --project "$project" --json)
+    echo "$output"
+    if command -v jq >/dev/null 2>&1; then
+        name=$(basename "$project" .csproj)
+        version=$(jq -r '.version' <<<"$output")
+        changed=$(jq -r '.versionChanged' <<<"$output")
+        if [[ "$changed" == "true" ]]; then
+            echo "Would create tag: ${name,,}/v${version}"
+        else
+            echo "No tag: version unchanged"
+        fi
     fi
+    echo
 done
 
-echo -e "${GREEN}✅ Dry-run tests completed!${NC}"
+echo -e "${GREEN}✅ Done - nothing was changed.${NC}"
 echo
 echo "Summary:"
-echo "- CLI supports --dry-run flag for both 'version' and 'report' commands"
-echo "- MSBuild task supports /p:DryRun=true property"
-echo "- GitHub Actions support dry-run: 'true' input"
-echo "- All operations show what would happen without making actual changes"
+echo "- mr-version version/report/changelog only read the repository (no --dry-run flag needed)"
+echo "- dotnet build -p:MonoRepoDebug=true shows how each version was calculated; builds never create tags"
+echo "- The mr-version/calculate, tag and release actions accept dry-run: 'true'"

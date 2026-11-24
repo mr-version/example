@@ -4,6 +4,14 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+permissions:
+  contents: read
+  pull-requests: write   # comment on the pull request
+
+env:
+  # Keep in sync with the Mister.Version package version in Directory.Build.targets
+  MR_VERSION: '3.0.0'
+
 jobs:
   version-check:
     name: Check Version Changes
@@ -14,40 +22,63 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Checkout base branch
-        run: |
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
-          
+          dotnet-version: '8.0.x'
+
       - name: Setup Mr. Version
         uses: mr-version/setup@main
         with:
-          version: 'prerelease'
+          version: ${{ env.MR_VERSION }}
 
+      # mr-version.yml is picked up from the root of each checkout (no config-file input), so the base
+      # branch is versioned with its own configuration.
       - name: Calculate Current Version
         id: current
         uses: mr-version/calculate@main
         with:
-          config-file: 'mr-version.yml'
-          ref: ${{ github.event.pull_request.head.sha }}
+          projects: 'src/**/*.csproj'
+
+      # The calculate action versions the commit checked out in repository-path, so check the base
+      # branch out next to the pull request (as a local branch, so it is versioned as that branch).
+      - name: Check out base branch
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: git worktree add -B "$BASE_REF" "$RUNNER_TEMP/base" "origin/$BASE_REF"
 
       - name: Calculate Base Version
         id: base
         uses: mr-version/calculate@main
         with:
-          config-file: 'mr-version.yml'
-          ref: origin/${{ github.event.pull_request.base.ref }}
+          repository-path: ${{ runner.temp }}/base
+          projects: 'src/**/*.csproj'
 
-      - name: Generate Version Comparison Report
+      - name: Generate Version Report
         uses: mr-version/report@main
         with:
           output-format: 'markdown'
-          output-file: 'version-comparison.md'
-          changed-only: true
+          output-file: 'version-report.md'
+          include-non-packable: 'true'
+          changed-only: 'true'
+
+      - name: Build Version Comparison
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_VERSIONS: ${{ steps.base.outputs.projects }}
+          PR_VERSIONS: ${{ steps.current.outputs.projects }}
+        run: |
+          {
+            echo "| Project | ${BASE_REF} | This PR | Changed in PR |"
+            echo "|---------|------|---------|---------------|"
+            jq -r --argjson base "$BASE_VERSIONS" '
+              ($base | map({(.project): .version}) | add // {}) as $b
+              | .[] | "| \(.project) | \($b[.project] // "-") | \(.version) | \(if .versionChanged then "yes" else "no" end) |"
+            ' <<<"$PR_VERSIONS"
+            echo
+            cat version-report.md
+          } > version-comparison.md
+          cat version-comparison.md
 
       - name: Comment PR with Version Comparison
         uses: actions/github-script@v7
@@ -55,21 +86,21 @@ jobs:
           script: |
             const fs = require('fs');
             const report = fs.readFileSync('version-comparison.md', 'utf8');
-            
+
             // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number
             });
-            
-            const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
               comment.body.includes('## Version Change Report')
             );
-            
+
             const body = `## Version Change Report\n\n${report}`;
-            
+
             if (botComment) {
               // Update existing comment
               await github.rest.issues.updateComment({

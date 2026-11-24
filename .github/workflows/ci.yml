@@ -8,18 +8,122 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  # Keep the CLI on the same version as the Mister.Version package in Directory.Build.targets,
+  # so the workflow and the build calculate the same versions.
+  MR_VERSION: '3.0.0'
+  DOTNET_VERSION: '8.0.x'
 
 jobs:
-  setup:
-    name: Setup Mr. Version
+  version:
+    name: Calculate Versions
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      major: ${{ steps.version.outputs.major }}
-      minor: ${{ steps.version.outputs.minor }}
-      patch: ${{ steps.version.outputs.patch }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
+      projects: ${{ steps.calc.outputs.projects }}
+      has-changes: ${{ steps.calc.outputs.has-changes }}
+      changed-count: ${{ steps.calc.outputs.changed-count }}
+      library-version: ${{ steps.library.outputs.version }}
+      library-changed: ${{ steps.library.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # versions are calculated from the full history and tags
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Mr. Version
+        uses: mr-version/setup@main
+        with:
+          version: ${{ env.MR_VERSION }}
+
+      - name: Calculate Versions
+        id: calc
+        uses: mr-version/calculate@main
+        with:
+          projects: 'src/**/*.csproj'
+          config-file: 'mr-version.yml'
+          output-version-information: 'true'
+
+      - name: Select the package version
+        id: library
+        env:
+          PROJECTS: ${{ steps.calc.outputs.projects }}
+        run: |
+          version=$(jq -r '.[] | select(.project == "ExampleLibrary") | .version' <<<"$PROJECTS")
+          changed=$(jq -r '.[] | select(.project == "ExampleLibrary") | .versionChanged' <<<"$PROJECTS")
+          echo "ExampleLibrary: $version (changed: $changed)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Version Report Summary
+        uses: mr-version/report@main
+        with:
+          output-format: 'markdown'
+          include-commits: 'true'
+          include-dependencies: 'true'
+          include-non-packable: 'true'
+          changed-only: 'false'
+
+  build:
+    name: Build and Test
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the Mister.Version package versions the projects during the build
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      # No -p:Version: the Mister.Version package sets each project's version during the build
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --no-build --verbosity normal --configuration Release
+
+      - name: Pack NuGet package
+        run: |
+          dotnet pack src/ExampleLibrary/ExampleLibrary.csproj \
+            --configuration Release \
+            --no-build \
+            -o ./artifacts
+
+      - name: Check the package version
+        env:
+          EXPECTED: ${{ needs.version.outputs.library-version }}
+        run: |
+          ls artifacts
+          if [ ! -f "artifacts/MrVersionExample.Library.${EXPECTED}.nupkg" ]; then
+            echo "::warning::The build produced a different package version than mr-version calculated (${EXPECTED})"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/*.nupkg
+
+  tag:
+    name: Create Version Tags
+    needs: [version, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.version.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tags-pushed: ${{ steps.tag.outputs.tags-pushed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,132 +132,68 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
-          
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
       - name: Setup Mr. Version
         uses: mr-version/setup@main
         with:
-          version: 'prerelease'
+          version: ${{ env.MR_VERSION }}
 
-      - name: Calculate Version
-        id: version
-        uses: mr-version/calculate@main
+      # Tags exactly the versions calculated in the version job and pushes the new tags
+      - name: Create Git Tags
+        id: tag
+        uses: mr-version/tag@main
         with:
-          config-file: 'mr-version.yml'
-          dry-run: 'true'
+          projects-json: ${{ needs.version.outputs.projects }}
+          tag-prefix: 'v'
+          create-global-tags: 'true'
+          global-tag-strategy: 'all'
+          tag-message-template: 'Release {version} for {project}'
+          only-changed: 'true'
+          push-tags: 'true'
 
-      - name: Generate Version Report Summary
-        uses: mr-version/report@main
-        with:
-          output-format: 'markdown'
-          include-commits: true
-          include-dependencies: true
-          changed-only: false
-          repository-path: ${{ github.workspace }}
-
-  build:
-    name: Build and Test
-    needs: setup
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        project: [ExampleApp, ExampleLibrary]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Build with version
-        run: |
-          dotnet build --configuration Release --no-restore \
-            -p:Version=${{ needs.setup.outputs.version }} \
-            -p:AssemblyVersion=${{ needs.setup.outputs.major }}.${{ needs.setup.outputs.minor }}.${{ needs.setup.outputs.patch }}.0 \
-            -p:FileVersion=${{ needs.setup.outputs.major }}.${{ needs.setup.outputs.minor }}.${{ needs.setup.outputs.patch }}.0
-
-      - name: Test
-        run: dotnet test --no-build --verbosity normal --configuration Release
-
-      - name: Pack NuGet packages
-        if: matrix.project == 'ExampleLibrary'
-        run: |
-          dotnet pack src/${{ matrix.project }}/${{ matrix.project }}.csproj \
-            --configuration Release \
-            --no-build \
-            -p:PackageVersion=${{ needs.setup.outputs.version }} \
-            -o ./artifacts
-
-      - name: Upload artifacts
-        if: matrix.project == 'ExampleLibrary'
-        uses: actions/upload-artifact@v4
-        with:
-          name: nuget-packages
-          path: ./artifacts/*.nupkg
-
-
-  tag:
-    name: Create Version Tag
-    needs: [setup, build]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  release:
+    name: Create GitHub Release
+    needs: [version, build, tag]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.version.outputs.library-changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0   # includes the tags pushed by the tag job
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Setup Mr. Version
         uses: mr-version/setup@main
         with:
-          version: 'prerelease'
+          version: ${{ env.MR_VERSION }}
 
-      - name: Create Git Tag
-        uses: mr-version/tag@main
+      - name: Generate release notes
+        id: notes
+        uses: mr-version/changelog@main
         with:
-          repository-path: '.'
-          projects: 'src/**/*.csproj'
-          tag-prefix: 'v'
-          create-global-tags: true
-          global-tag-strategy: 'all'
-          tag-message-template: 'Release {version} for {project}'
-          only-changed: true
-          dry-run: 'true'
-
-  release:
-    name: Create GitHub Release
-    needs: [setup, build, tag]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.x'
+          to-version: ${{ needs.version.outputs.library-version }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          output-file: artifacts/RELEASE_NOTES.md
 
       - name: Create Release
-        uses: mr-version/release@main
+        uses: softprops/action-gh-release@v2
         with:
-          version: ${{ needs.setup.outputs.version }}
-          tag: v${{ needs.setup.outputs.version }}
-          name: 'Release ${{ needs.setup.outputs.version }}'
+          tag_name: v${{ needs.version.outputs.library-version }}
+          name: Release ${{ needs.version.outputs.library-version }}
+          body_path: ${{ steps.notes.outputs.changelog-file }}
           draft: false
-          prerelease: ${{ needs.setup.outputs.prerelease != '' }}
-          files: |
-            nuget-packages/*.nupkg
+          prerelease: ${{ contains(needs.version.outputs.library-version, '-') }}
+          files: artifacts/*.nupkg

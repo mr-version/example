@@ -1,83 +1,62 @@
-# Mr. Version Configuration
-# This configuration demonstrates various features of the versioning system
+# Mister.Version configuration for this example repository.
+#
+# The MSBuild package (Mister.Version) and the mr-version CLI find this file in the repository root
+# automatically. Keys are camelCase; see "YAML Configuration" in the Mister.Version README
+# (https://github.com/mr-version/mister.version#yaml-configuration). An unknown key makes the tools warn,
+# so every key below is one they understand.
 
-# Base global version - used as fallback when no tags or versions are found
-# Applies to all projects including test projects and artifacts normally ignored
-base-global-version: "1.0.0"
+# Version used when no version tags exist yet.
+baseVersion: "1.0.0"
 
-# Default version increment for commits
-default-increment: patch
+# Increment applied when a project changed and no commit convention decides the bump.
+defaultIncrement: patch
 
-# Version format
-version-format: "{Major}.{Minor}.{Patch}"
+# Version tags: v1.2.3 for global versions, ExampleLibrary/v1.2.3 for project versions.
+# (The tag message is set by the mr-version/tag action's tag-message-template input.)
+tagPrefix: v
 
-# Branch-specific configuration
-branches:
-  main:
-    increment: minor
-    tag: true
-  develop:
-    increment: patch
-    tag: false
-    prerelease: alpha
-  feature/*:
-    increment: patch
-    tag: false
-    prerelease: beta
-  release/*:
-    increment: patch
-    tag: true
-    prerelease: rc
-  hotfix/*:
-    increment: patch
-    tag: true
+# prereleaseType is deliberately not set: main and develop get no -alpha/-beta/-rc suffix by default
+# (develop versions carry -dev.<height>), and a value here would override the prerelease type chosen
+# per run with the calculate action's prerelease-type input or -p:MonoRepoPrereleaseType
+# (see .github/workflows/manual-release.yml).
 
-# Commit message patterns for version increments
-commit-patterns:
-  - pattern: "^BREAKING CHANGE:"
-    increment: major
-  - pattern: "^feat:"
-    increment: minor
-  - pattern: "^fix:"
-    increment: patch
-  - pattern: "^docs:"
-    increment: none
-  - pattern: "^style:"
-    increment: none
-  - pattern: "^refactor:"
-    increment: patch
-  - pattern: "^test:"
-    increment: none
-  - pattern: "^chore:"
-    increment: none
+# Test projects are not versioned (ExampleApp.Tests, ExampleLibrary.Tests).
+skipTestProjects: true
 
-# Tag configuration
-tag:
-  prefix: "v"
-  message: "Release version {version}"
+# The version bump comes from Conventional Commits (highest bump wins):
+#   BREAKING CHANGE: / feat!: -> major, feat: -> minor, fix: / refactor: -> patch,
+#   docs: / style: / test: / chore: -> no bump
+commitConventions:
+  enabled: true
+  majorPatterns:
+    - "BREAKING CHANGE:"
+    - "!:"
+  minorPatterns:
+    - "feat:"
+  patchPatterns:
+    - "fix:"
+    - "refactor:"
+  ignorePatterns:
+    - "docs:"
+    - "style:"
+    - "test:"
+    - "chore:"
 
-# Project-specific configuration
-projects:
-  - path: "src/ExampleApp"
-    name: "ExampleApp"
-    independent-versioning: false
-  - path: "src/ExampleLibrary"
-    name: "ExampleLibrary"
-    independent-versioning: false
-  - path: "tests/ExampleApp.Tests"
-    name: "ExampleApp.Tests"
-    versioning: false
-  - path: "tests/ExampleLibrary.Tests"
-    name: "ExampleLibrary.Tests"
-    versioning: false
+# ExampleApp and ExampleLibrary are versioned per project. ExampleApp references ExampleLibrary, so a
+# change in the library also bumps the app. (Test projects are skipped above.)
 
-# Metadata to include in version tags
-metadata:
-  include-commit-hash: true
-  include-branch-name: true
-  include-timestamp: true
+# Put the branch name into the build metadata of prerelease branch versions
+# (feature/new-ops -> 1.0.1-new-ops.2+new-ops, develop -> 1.1.0-dev.2+develop).
+# Mister.Version 3.0.0 accepts this setting without applying it; the current Mister.Version source applies it.
+gitIntegration:
+  includeBranchInMetadata: true
 
-# Output configuration
-output:
-  file: "version.json"
-  format: "json"
+# Branch behaviour is built in and not configured here:
+#   main        final versions; tags are created by the CI workflow (mr-version/tag)
+#   develop     prerelease with the commit height, e.g. 1.1.0-dev.3
+#   feature/*   prerelease named after the branch, e.g. feature/new-ops -> 1.0.1-new-ops.2
+#   release/*   final versions within the branch's major.minor (release/1.1 -> 1.1.x)
+#   hotfix/*    prerelease named after the branch, like feature branches (hotfix/x -> 1.0.1-x.1)
+#
+# Version reports are written by the CLI or the report action, not configured here:
+#   mr-version report --output json --file version.json
