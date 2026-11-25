@@ -1,41 +1,45 @@
 name: Manual Release
 
+# Versions come from the commit history (Conventional Commits, see mr-version.yml); this workflow lets you
+# choose a prerelease type for the run or force an exact version.
 on:
   workflow_dispatch:
     inputs:
-      version-type:
-        description: 'Version increment type'
+      prerelease-type:
+        description: 'Prerelease type (none = final version)'
         required: true
-        default: 'patch'
+        default: 'none'
         type: choice
         options:
-          - patch
-          - minor
-          - major
-          - prerelease
-      prerelease-id:
-        description: 'Prerelease identifier (e.g., alpha, beta, rc)'
-        required: false
-        default: ''
-      custom-version:
-        description: 'Custom version (overrides increment type)'
+          - none
+          - alpha
+          - beta
+          - rc
+      force-version:
+        description: 'Force this exact version (e.g. 2.0.0); leave empty to use the calculated version'
         required: false
         default: ''
 
 permissions:
   contents: write
 
+env:
+  # Keep in sync with the Mister.Version package version in Directory.Build.targets
+  MR_VERSION: '3.0.0'
+
 jobs:
   release:
     name: Create Manual Release
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    env:
+      # The same settings for the mr-version actions and the MSBuild package, so both calculate the same versions
+      PRERELEASE_TYPE: ${{ github.event.inputs.prerelease-type }}
+      FORCE_VERSION: ${{ github.event.inputs.force-version }}
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -45,71 +49,80 @@ jobs:
       - name: Setup Mr. Version
         uses: mr-version/setup@main
         with:
-          version: 'prerelease'
+          version: ${{ env.MR_VERSION }}
 
       - name: Calculate Version
         id: version
         uses: mr-version/calculate@main
         with:
+          projects: 'src/**/*.csproj'
           config-file: 'mr-version.yml'
-          increment: ${{ github.event.inputs.version-type }}
-          prerelease: ${{ github.event.inputs.prerelease-id }}
-          custom-version: ${{ github.event.inputs.custom-version }}
+          prerelease-type: ${{ env.PRERELEASE_TYPE }}
+          force-version: ${{ env.FORCE_VERSION }}
+
+      - name: Select the package version
+        id: library
+        env:
+          PROJECTS: ${{ steps.version.outputs.projects }}
+        run: |
+          version=$(jq -r '.[] | select(.project == "ExampleLibrary") | .version' <<<"$PROJECTS")
+          echo "ExampleLibrary: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Build Projects
         run: |
           dotnet build --configuration Release \
-            -p:Version=${{ steps.version.outputs.version }} \
-            -p:AssemblyVersion=${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}.${{ steps.version.outputs.patch }}.0 \
-            -p:FileVersion=${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}.${{ steps.version.outputs.patch }}.0
+            -p:MonoRepoPrereleaseType="$PRERELEASE_TYPE" \
+            -p:ForceVersion="$FORCE_VERSION"
 
       - name: Run Tests
         run: dotnet test --no-build --configuration Release
 
       - name: Pack NuGet Packages
         run: |
-          dotnet pack --configuration Release --no-build \
-            -p:PackageVersion=${{ steps.version.outputs.version }} \
+          dotnet pack src/ExampleLibrary/ExampleLibrary.csproj --configuration Release --no-build \
+            -p:MonoRepoPrereleaseType="$PRERELEASE_TYPE" \
+            -p:ForceVersion="$FORCE_VERSION" \
             -o ./artifacts
+          ls artifacts
 
-      - name: Generate Release Notes
-        uses: mr-version/report@main
-        with:
-          output-format: 'markdown'
-          output-file: 'RELEASE_NOTES.md'
-          changed-only: false
-
-      - name: Create Version Tag
+      # Tags exactly the versions calculated above and pushes only the new tags
+      - name: Create Version Tags
+        id: tag
         uses: mr-version/tag@main
         with:
-          repository-path: '.'
-          projects: 'src/**/*.csproj'
+          projects-json: ${{ steps.version.outputs.projects }}
           tag-prefix: 'v'
-          create-global-tags: true
+          create-global-tags: 'true'
           global-tag-strategy: 'all'
           tag-message-template: 'Manual release {version} for {project}'
-          only-changed: true
+          only-changed: 'true'
+          push-tags: 'true'
 
-      - name: Push Tags
-        run: |
-          git push origin --tags
+      - name: Generate Release Notes
+        id: notes
+        uses: mr-version/changelog@main
+        with:
+          to-version: ${{ steps.library.outputs.version }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          output-file: RELEASE_NOTES.md
 
       - name: Create GitHub Release
-        uses: mr-version/release@main
-        with:
-          version: ${{ steps.version.outputs.version }}
-          tag: v${{ steps.version.outputs.version }}
-          name: 'Release ${{ steps.version.outputs.version }}'
-          body-file: 'RELEASE_NOTES.md'
-          draft: false
-          prerelease: ${{ steps.version.outputs.prerelease != '' }}
-          files: |
-            artifacts/*.nupkg
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.library.outputs.version }}
+          NOTES_FILE: ${{ steps.notes.outputs.changelog-file }}
+        run: |
+          args=(--title "Release ${VERSION}" --notes-file "$NOTES_FILE" --verify-tag)
+          if [[ "$VERSION" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "v${VERSION}" artifacts/*.nupkg "${args[@]}"
 
       - name: Publish to NuGet
-        if: ${{ !contains(steps.version.outputs.version, '-') }}
+        if: ${{ !contains(steps.library.outputs.version, '-') && env.NUGET_API_KEY != '' }}
         run: |
           dotnet nuget push artifacts/*.nupkg \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
